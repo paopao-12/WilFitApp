@@ -5,6 +5,9 @@ using System.Windows;
 using System.Windows.Input;
 using System.Timers;
 using System.Windows.Controls;
+using LiveCharts;
+using LiveCharts.Wpf;
+using System.Linq;
 
 namespace CalorieTracker
 {
@@ -14,11 +17,19 @@ namespace CalorieTracker
         private Timer resetTimer;
         private bool userChangedMeasurement = false;
         private double accumulatedCalories = 0;
+        public string[] Labels { get; set; }
 
         public MainWindow()
         {
             InitializeComponent();
-            con = new Connection("Data Source=NITRO5\\SQLEXPRESS01;Integrated Security=True");
+            SeriesCollection = new SeriesCollection();
+            Labels = new string[0];
+
+            RetrieveWeightDataFromDatabase();
+
+            DataContext = this;
+
+            con = new Connection("Data Source=NITRO5\\SQLEXPRESS01;Initial Catalog=OOP_User;Integrated Security=True");
 
             caloriesProgressBar.Value = accumulatedCalories; 
             foodItemTextBox.TextChanged += (sender, e) =>
@@ -41,6 +52,37 @@ namespace CalorieTracker
             InitializeResetTimer();
             InitializeWaterResetTimer();
         }
+        public SeriesCollection SeriesCollection { get; set; }
+        public Func<double, string> Values { get; set; }
+
+        private void RetrieveWeightDataFromDatabase()
+        {
+            using (SqlConnection connection = new SqlConnection("Data Source=NITRO5\\SQLEXPRESS01;Initial Catalog=OOP_User;Integrated Security=True"))
+            {
+                connection.Open();
+                string query = "SELECT Date, Weight FROM WeightData ORDER BY Date ASC";
+
+                using (SqlCommand command = new SqlCommand(query, connection))
+                using (SqlDataReader reader = command.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        DateTime date = Convert.ToDateTime(reader["Date"]);
+                        double weight = Convert.ToDouble(reader["Weight"]);
+
+                        Labels = Labels.Concat(new string[] { date.ToString("yyyy-MM-dd") }).ToArray();
+
+                        
+                        SeriesCollection.Add(new ColumnSeries
+                        {
+                            Title = date.ToString("yyyy-MM-dd"),
+                            Values = new ChartValues<double> { weight }
+                        });
+                    }
+                }
+            }
+        }
+
 
         private void InitializeResetTimer()
         {
@@ -76,7 +118,7 @@ namespace CalorieTracker
                 connection.Open();
 
 
-                string resetQuery = "DELETE FROM FoodLogg;";
+                string resetQuery = "DELETE From FoodLogg;";
 
                 using (SqlCommand command = new SqlCommand(resetQuery, connection))
                 {
@@ -217,11 +259,11 @@ namespace CalorieTracker
                 connection.Open();
 
                 string insertQuery = "INSERT INTO WaterLog (Date, Amount, Measurement) " +
-                                    "VALUES (@Date, @Amount, @Measurement)";
+                            "VALUES (GETDATE(), @Amount, @Measurement)";
 
                 using (SqlCommand command = new SqlCommand(insertQuery, connection))
                 {
-                    command.Parameters.AddWithValue("@Date", waterDatePicker.SelectedDate);
+                    
                     command.Parameters.AddWithValue("@Amount", waterAmount);
                     command.Parameters.AddWithValue("@Measurement", measurement);
 
